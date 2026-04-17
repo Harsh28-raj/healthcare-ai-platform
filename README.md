@@ -1,33 +1,27 @@
-# 💊 Drug Condition API
+# 🩺 Disease Prediction Engine
 
-> NLP-powered drug recommendation API based on patient reviews — part of the **Ai_healthcare** platform.  
-> Branch: `drug-condition-api`
+> AI-powered symptom-to-disease prediction API — part of the **Ai_healthcare** platform.  
+> Branch: `disease-prediction-engine`
 
 ---
 
 ## 📌 What It Does
 
-User inputs a **text review / symptom description** → Model predicts the **Top 4 most relevant drug conditions** → API returns ranked condition recommendations.
+User selects symptoms → Model predicts **Top 5 most likely diseases** with confidence scores → API returns ranked predictions with remedies.
 
-Built using a **Passive Aggressive Classifier** with **TF-IDF vectorization** trained on the UCI Drug Review Dataset.
-
-> ⚠️ **Known Limitation:** This version predicts only from a fixed set of **4 conditions**. This limitation has been resolved in the next feature branch.
+Built on a **Neural Network** trained on a 773-class symptom-disease dataset with **85.6% accuracy**.
 
 ---
 
 ## 🗂️ Branch Structure
 
 ```
-drug-condition-api/
+disease-prediction-engine/
 │
-├── data/
-│   └── drugs_filtered.csv       # Filtered drug-review training data
-├── model/
-│   ├── model.pkl                # Trained Passive Aggressive Classifier
-│   └── vectorizer.pkl           # TF-IDF vectorizer (fitted)
-├── app.py                       # FastAPI app — prediction endpoint
-├── utils.py                     # Helper functions (preprocessing etc.)
-└── requirements.txt             # Python dependencies
+├── main.py                  # FastAPI app — prediction endpoint
+├── disease_rf_model.joblib  # Trained ML model (serialized)
+├── symptoms_list.json       # List of all 377 valid symptoms
+└── requirements.txt         # Python dependencies
 ```
 
 ---
@@ -37,11 +31,9 @@ drug-condition-api/
 | Layer | Technology |
 |-------|-----------|
 | Framework | FastAPI |
-| ML Model | Passive Aggressive Classifier |
-| Vectorizer | TF-IDF (sklearn) |
-| Dataset | UCI Drug Review Dataset |
-| Input Format | Raw string (patient review text) |
-| Output | Top 4 predicted drug conditions |
+| ML Model | Keras Neural Network (joblib serialized) |
+| Input Features | 377 binary symptom flags |
+| Output Classes | 773 diseases |
 | Deployment | Render (Free Tier) |
 | Language | Python 3.10+ |
 
@@ -50,27 +42,24 @@ drug-condition-api/
 ## 🧠 How The Model Works
 
 ```
-User Input (free text review / symptom description)
+User Input (symptoms list)
         ↓
-Text Preprocessing (utils.py)
-  → lowercase, remove punctuation, stopwords
+Map symptoms → 377-dim binary vector
         ↓
-TF-IDF Vectorization (vectorizer.pkl)
+Neural Network Inference
+  Input(377) → Dense(1024) → Dense(1024) → Softmax(773)
         ↓
-Passive Aggressive Classifier Inference (model.pkl)
-        ↓
-Top 4 Conditions with confidence scores
+Top 5 predictions with confidence scores (Softmax probabilities)
         ↓
 JSON Response
 ```
 
 **Training Details:**
-- Dataset: UCI Drug Review Dataset
-- Model: Passive Aggressive Classifier
-- Vectorizer: TF-IDF, max_features = 15,000
-- Model size: ~1.52MB (optimized for Render free tier)
-- Input: Raw string text
-- Output: Top 4 drug conditions
+- Dataset: Kaggle Symptom-Disease dataset
+- Classes: 773 diseases
+- Input: 377 binary symptom features
+- Accuracy: **85.6%**
+- Early stopping applied
 
 ---
 
@@ -78,65 +67,61 @@ JSON Response
 
 ### Base URL
 ```
-https://ai-healtcare-2.onrender.com
+https://ai-healtcare.onrender.com
 ```
 
----
+### `POST /predict`
 
-### `POST /recommend`
-
-Predicts top drug conditions from a patient review string.
+Predicts top diseases based on input symptoms.
 
 **Request Body:**
 ```json
 {
-  "review": "I have been suffering from severe anxiety and constant stress for months"
+  "symptoms": [
+    "fever",
+    "headache",
+    "vomiting"
+  ]
 }
 ```
 
 **Response:**
 ```json
 {
-  "input_review": "I have been suffering from severe anxiety and constant stress for months",
-  "top_conditions": [
+  "input_symptoms": [
+    "fever",
+    "headache",
+    "vomiting"
+  ],
+  "predictions": [
     {
-      "condition": "Anxiety",
-      "confidence": 0.78
+      "disease": "malaria",
+      "confidence": 0.82
     },
     {
-      "condition": "Depression",
-      "confidence": 0.12
-    },
-    {
-      "condition": "Pain",
-      "confidence": 0.06
-    },
-    {
-      "condition": "Birth Control",
-      "confidence": 0.04
+      "disease": "typhoid",
+      "confidence": 0.11
     }
   ]
 }
 ```
 
 **Notes:**
-- Input must be a **non-empty string**
-- Returns exactly **Top 4 conditions** (model limitation in this version)
-- Confidence values are classifier probability scores (0.0 – 1.0)
-- This limitation is resolved in the next branch (`medicine-barcode-api`)
+- Symptoms must match entries in `symptoms_list.json`
+- Returns top 5 predictions sorted by confidence (descending)
+- Confidence values are Softmax probabilities (0.0 – 1.0)
+- If confidence < 0.40 → app shows **"Consult a doctor"** warning
 
 ---
 
-### `GET /health`
+### `GET /symptoms`
 
-Check if API is live.
+Returns the full list of valid symptom strings.
 
 **Response:**
 ```json
 {
-  "status": "ok",
-  "model": "drug-condition-classifier",
-  "version": "1.0"
+  "symptoms": ["fever", "headache", "vomiting", "...377 total"]
 }
 ```
 
@@ -146,7 +131,7 @@ Check if API is live.
 
 ### 1. Clone the branch
 ```bash
-git clone -b drug-condition-api https://github.com/Harsh28-raj/Ai_healthcare.git
+git clone -b disease-prediction-engine https://github.com/Harsh28-raj/Ai_healthcare.git
 cd Ai_healthcare
 ```
 
@@ -164,14 +149,14 @@ pip install -r requirements.txt
 
 ### 4. Run the server
 ```bash
-uvicorn app:app --reload
+uvicorn main:app --reload
 ```
 
 ### 5. Test it
 ```bash
-curl -X POST https://ai-healtcare-2.onrender.com/recommend \
+curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
-  -d '{"review": "I have been suffering from severe anxiety and stress"}'
+  -d '{"symptoms": ["fever", "headache", "vomiting"]}'
 ```
 
 ---
@@ -181,29 +166,22 @@ curl -X POST https://ai-healtcare-2.onrender.com/recommend \
 ```
 fastapi
 uvicorn
+numpy==1.24.4
 scikit-learn
 joblib
 pydantic
-pandas
 ```
 
----
-
-## ⚠️ Known Limitations
-
-| Limitation | Status |
-|-----------|--------|
-| Predicts only Top 4 conditions | ✅ Fixed in next branch |
-| Input must be English text only | 🔜 Multilingual planned |
-| No drug name recommendation, only condition | 🔜 Planned |
+> ⚠️ NumPy version pinned to `1.24.4` — model was serialized with this version. Changing it will cause joblib load errors.
 
 ---
 
 ## ⚠️ Disclaimer
 
-> This API is for **informational and educational purposes only.**  
-> It does **not** recommend specific medicines or replace medical advice.  
-> Always consult a qualified doctor before taking any medication.
+> This API is for **informational and educational purposes only**.  
+> It does **not** provide medical diagnosis.  
+> Always consult a qualified doctor for medical advice.  
+> Low confidence predictions (< 0.40) are automatically flagged.
 
 ---
 
@@ -211,11 +189,11 @@ pandas
 
 | Branch | Feature |
 |--------|---------|
-| `disease-prediction-engine` | Symptom → Disease prediction |
-| `drug-condition-api` | ← You are here |
-| `medicine-barcode-api` | Medicine barcode scanner (fixes limitations) |
+| `disease-prediction-engine` | ← You are here |
+| `medicine-barcode-api` | Medicine barcode scanner |
 | `food-barcode-api` | Food barcode + Nutri-Score |
 | `daily-health-log` | Calorie & activity tracker |
+| `rag-medical-bot` | AI chatbot (Roadmap) |
 
 ---
 
@@ -224,4 +202,3 @@ pandas
 **Harsh Raj** — [@Harsh28-raj](https://github.com/Harsh28-raj)  
 2nd Year CS Student | AI/ML Developer  
 Part of **Ai_healthcare** — an end-to-end AI health platform for Indian users.
-
